@@ -68,10 +68,18 @@ h1, h2, h3 { text-wrap: balance; font-weight: 400; margin: 0; }
   font-family: var(--display); font-size: clamp(56px, 10vw, 168px); line-height: .86;
   letter-spacing: -.02em; font-weight: 400;
 }
-.name .line { display: block; overflow: hidden; padding: .04em .15em .26em; margin: 0 -.15em -.2em; }
+.name .line { display: block; padding: .04em .15em .26em; margin: 0 -.15em -.2em; white-space: nowrap; }
 .name .line:nth-child(2) { font-style: italic; padding-left: .65em; }
-.name .ch { display: inline-block; animation: rise .9s cubic-bezier(.2,.7,.1,1) both; }
-@keyframes rise { from { transform: translateY(150%); } to { transform: none; } }
+.name .ch { display: inline-block; }
+/* the name glides in from opposite edges of the screen, settling as its letters draw together */
+.name .line:nth-child(1) { animation: glideL 2.2s cubic-bezier(.16,1,.3,1) .15s both; }
+.name .line:nth-child(2) { animation: glideR 2.2s cubic-bezier(.16,1,.3,1) .45s both; }
+@keyframes glideL { from { transform: translateX(-70vw); letter-spacing: .35em; opacity: 0; filter: blur(10px); } 60% { opacity: 1; filter: blur(0); } to { transform: none; letter-spacing: -.02em; opacity: 1; filter: none; } }
+@keyframes glideR { from { transform: translateX(70vw); letter-spacing: .35em; opacity: 0; filter: blur(10px); } 60% { opacity: 1; filter: blur(0); } to { transform: none; letter-spacing: -.02em; opacity: 1; filter: none; } }
+/* ---------- rooftops with exhaust rising ---------- */
+.rooftops { position: relative; height: clamp(240px, 30vw, 420px); background: linear-gradient(180deg, #d9d7d2 0%, #b9b7b1 55%, #9c9a95 100%); overflow: hidden; border-top: 1px solid var(--ink); }
+.rooftops canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.rooftops .tag { position: absolute; left: var(--gutter); bottom: 14px; z-index: 2; color: #e9e6df; }
 .lede { max-width: 34ch; font-size: clamp(19px, 1.8vw, 23px); margin: 28px 0 0; color: var(--ink); }
 .lede em { font-style: italic; }
 
@@ -297,6 +305,8 @@ footer { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wr
   </figure>
 </header>
 
+<div class="rooftops" aria-hidden="true"><canvas id="roofs"></canvas></div>
+
 <div class="ticker places mono" aria-label="Places reported from">
   <div class="track" data-dup>
     <span>Seoul</span><span>Jeju</span><span>Tokyo</span><span>Bangkok</span><span>Hong Kong</span><span>Dallas</span><span>Boston</span><span>San Francisco</span><span>Madrid</span><span>Stockholm</span>
@@ -520,6 +530,79 @@ footer { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wr
   }
 
 
+
+  // ---- rooftops with exhaust rising from the stacks ----
+  const roofs = document.getElementById('roofs');
+  if (roofs) {
+    const rc = roofs.getContext('2d'); let W = 0, H = 0, D = 1, sky = null, stacks = [], puffs = [], live = false;
+    const R = (() => { let s = 20261125; return () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296; })();
+    const build = () => {
+      const r = roofs.getBoundingClientRect(); D = Math.min(devicePixelRatio || 1, 2);
+      W = roofs.width = r.width * D; H = roofs.height = r.height * D;
+      sky = document.createElement('canvas'); sky.width = W; sky.height = H; const g = sky.getContext('2d');
+      let s = 7; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+      stacks = [];
+      // far skyline (pale), near skyline (black), each building with a window grid
+      const layer = (baseH, varH, col, win, minW, maxW) => {
+        let x = -20 * D;
+        while (x < W) {
+          const bw = (minW + rnd() * (maxW - minW)) * D, bh = H * (baseH + rnd() * varH), top = H - bh;
+          g.fillStyle = col; g.fillRect(x, top, bw, bh);
+          if (win) {
+            const cw = 5 * D, ch = 8 * D, gx = 6 * D, gy = 8 * D;
+            for (let wy = top + 12 * D; wy < H - 8 * D; wy += ch + gy)
+              for (let wx = x + 8 * D; wx < x + bw - cw - 6 * D; wx += cw + gx) {
+                const lit = rnd(); g.fillStyle = lit > .9 ? 'rgba(236,232,222,.7)' : lit > .6 ? 'rgba(236,232,222,.12)' : 'rgba(0,0,0,.2)';
+                g.fillRect(wx, wy, cw, ch);
+              }
+          }
+          g.fillStyle = col;
+          if (win && rnd() > .45) { // rooftop stack or water tower
+            const sx = x + bw * (.2 + rnd() * .6), sw = (6 + rnd() * 6) * D, sh = (18 + rnd() * 26) * D;
+            if (rnd() > .72) { // water tower
+              g.fillStyle = col; g.fillRect(sx - 12 * D, top - 30 * D, 24 * D, 22 * D);
+              g.beginPath(); g.moveTo(sx - 14 * D, top - 30 * D); g.lineTo(sx, top - 42 * D); g.lineTo(sx + 14 * D, top - 30 * D); g.fill();
+              g.fillRect(sx - 10 * D, top - 8 * D, 2 * D, 8 * D); g.fillRect(sx + 8 * D, top - 8 * D, 2 * D, 8 * D);
+            } else {
+              g.fillRect(sx, top - sh, sw, sh); g.fillRect(sx - 2 * D, top - sh, sw + 4 * D, 3 * D);
+              stacks.push({ x: sx + sw / 2, y: top - sh, w: sw, rate: .35 + rnd() * .5 });
+            }
+          }
+          x += bw + (rnd() > .7 ? rnd() * 18 * D : 0);
+        }
+      };
+      layer(.30, .25, '#8d8b86', false, 50, 120);
+      layer(.18, .42, '#141416', true, 70, 170);
+      if (!stacks.length) stacks.push({ x: W * .62, y: H * .45, w: 10 * D, rate: .6 });
+      puffs = [];
+    };
+    const puff = st => ({ x: st.x + (R() - .5) * st.w * .6, y: st.y, r: st.w * (.45 + R() * .3), vx: (.18 + R() * .25) * D, vy: -(.45 + R() * .4) * D, a: .38 + R() * .18, life: 0, ph: R() * 6.28 });
+    const step = t => {
+      for (const st of stacks) if (R() < st.rate) puffs.push(puff(st));
+      for (let i = puffs.length - 1; i >= 0; i--) {
+        const p = puffs[i]; p.life += 1;
+        p.x += p.vx + Math.sin(t / 900 + p.ph + p.life / 40) * .35 * D; p.y += p.vy; p.vy *= .997; p.vx *= 1.003; p.r += .2 * D;
+        if (p.life > 360 || p.y < -p.r) puffs.splice(i, 1);
+      }
+    };
+    const frame = t => {
+      rc.clearRect(0, 0, W, H); rc.drawImage(sky, 0, 0);
+      if (!reduce) step(t);
+      for (let i = puffs.length - 1; i >= 0; i--) {
+        const p = puffs[i];
+        const a = p.a * Math.min(1, p.life / 12) * Math.max(0, 1 - p.life / 360);
+        if (a <= 0.004) continue;
+        const g = rc.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r);
+        g.addColorStop(0, `rgba(246,244,239,${a * .45})`); g.addColorStop(.55, `rgba(246,244,239,${a * .16})`); g.addColorStop(1, 'rgba(246,244,239,0)');
+        rc.fillStyle = g; rc.beginPath(); rc.arc(p.x, p.y, p.r, 0, 6.283); rc.fill();
+      }
+      if (live && !reduce) requestAnimationFrame(frame);
+    };
+    const warm = () => { for (let k = 0; k < 340; k++) step(k * 16); };
+    build(); warm(); addEventListener('resize', () => { build(); warm(); if (reduce) frame(0); });
+    if (reduce) frame(0);
+    else new IntersectionObserver(es => { const v = es[0].isIntersecting; if (v && !live) { live = true; requestAnimationFrame(frame); } else if (!v) live = false; }).observe(roofs);
+  }
 
   // ---- hero parallax ----
   const hero = document.getElementById('hero-canvas');
